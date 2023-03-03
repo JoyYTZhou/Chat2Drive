@@ -1,13 +1,13 @@
 #include <TinyGPS++.h>
 // source from https://github.com/neosarchizo/TinyGPS/tree/master/examples 
 
-static const uint32_t GPSBaud = 9600;
-TinyGPSPlus gps;
+static const uint32_t GPSBaud = 9600; // NEO-6M has a GPS baud rate of 9600
+TinyGPSPlus gps; 
 
 // Compass navigation
 #include <Wire.h>
 #include <DFRobot_QMC5883.h>
-DFRobot_QMC5883 compass; // Default init status
+DFRobot_QMC5883 compass(&Wire, /*I2C addr*/QMC5883_ADDRESS); // Default init status for QMC5883 compass
 int targetHeading;              // the direction of intended angle
 int currentHeading;             // current angular direction
 int headingError;               // signed (+/-) difference between targetHeading and currentHeading
@@ -15,21 +15,22 @@ int headingError;               // signed (+/-) difference between targetHeading
 
 #include "math.h"
 #include <Adafruit_GPS.h>
-Adafruit_GPS GPS(&Serial3);
+Adafruit_GPS GPS(&Serial3); 
 float currentLat,
       currentLong;
 
 int distanceToTarget,            // current distance to target (current waypoint)
-    originalDistanceToTarg      et;    // distance to original waypoing when we started navigating to it
+    originalDistanceToTarget;    // distance to original waypoing when we started navigating to it
 
-#define WAYPOINT_DIST_TOLERANE  3   //tolerance in meters to waypoint; once within this tolerance, will advance to the next waypoint
+#define WAYPOINT_DIST_TOLERANE 3   //tolerance in meters to waypoint; once within this tolerance, will advance to the next waypoint
 #define stopwaypoint 5                  //second
 int current_waypoint = 0;
+
 // Slide South -lat
 float waypointList[10][2] = {
-  { -7.297828, 112.801938},
-  { -7.297885, 112.802251}, //-7.297873, 112.802250
-  { -7.297931, 112.802584}, //-7.297925, 112.802584 //-7.298058, 112.803043
+  { 32.874959, -117.240641}, // Fairbank Coffee
+  { 32.874787, -117.241373}, 
+  { 32.874727, -117.241808}, 
 };
 
 float targetLat = waypointList[0][0];
@@ -56,13 +57,13 @@ void setup()
     delay(500);
   }
   // Set measurement range
-  compass.setRange(QMC5883_RANGE_1_3GA);
+  compass.setRange(QMC5883_RANGE_2GA);
   // Set measurement mode
   compass.setMeasurementMode(QMC5883_CONTINOUS);
   // Set data rate
   compass.setDataRate(QMC5883_DATARATE_50HZ);
   // Set number of samples averaged
-  compass.setSamples(HMC5883L_SAMPLES_8);
+  compass.setSamples(QMC5883_SAMPLES_8);
   // Set calibration offset. See HMC5883L_calibration.ino
   compass.setOffset(0, 0);
   Serial.println("Start");
