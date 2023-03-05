@@ -43,6 +43,22 @@ int sonarDistance;
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);     // NewPing setup of pins and maximum distance.
 MovingAverage<int, 3> sonarAverage(MAX_DISTANCE_IN);       // moving average of last n pings, initialize at MAX_DISTANCE_IN
 
+// Object avoidance distances (in inches)
+#define SAFE_DISTANCE 70
+#define TURN_DISTANCE 40
+#define STOP_DISTANCE 12
+
+// Directions
+enum directions {straight=0, left=1, right=2, back=3} ;
+directions turnDirection = straight;
+
+// Speeds (range: 0 - 255)
+#define FAST_SPEED 150
+#define NORMAL_SPEED 125
+#define TURN_SPEED 100
+#define SLOW_SPEED 75
+int speed = NORMAL_SPEED;
+
 // Waypoints Definition
 #define WAYPOINT_DIST_TOLERANE 3   //tolerance in meters to waypoint; once within this tolerance, will advance to the next waypoint
 #define stopwaypoint 5                  //second
@@ -61,17 +77,13 @@ float targetLong = waypointList[0][1];
 void setup()
 {
   Serial.begin(9600);         //Debug
-  Serial3.begin(9600);       //GPS
-
-  pinMode(19, INPUT_PULLUP);
-  setup_motor();
+  Serial3.begin(9600);        //GPS
 
   GPS.begin(9600);                                // 9600 NMEA default speed
   GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);     // turns on RMC and GGA (fix data)
   GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);       // 1 Hz update rate
   GPS.sendCommand(PGCMD_NOANTENNA);                // turn off antenna status info
   delay(1000);
-
 
   while (!compass.begin())
   {
@@ -107,48 +119,29 @@ int aprint = 0;
 
 void loop()
 {
-  int sensorVal = digitalRead(19);
-
+  
   while (Serial3.available() > 0)
     if (gps.encode(Serial3.read()))
       processGPS();
 
-  else if (sensorVal == LOW)
-  {
-    // memastikan ada data GPS di robot dan HP
-    if (currentLong > 1 && targetLong > 1)
-    {
-      currentHeading = readCompass();
-      calcDesiredTurn();
-      move_robot();
 
-      //      Serial.print("_ch "); Serial.print(currentHeading);
-      //      Serial.print("_th "); Serial.print(targetHeading);
-      //      Serial.print("_eh "); Serial.print(headingError);
-      //      Serial.print("_di "); Serial.print(distanceToTarget);
-      //      Serial.println();
+  currentHeading = readCompass();
+  calcDesiredTurn();
 
+  // distance in front of us, move, and avoid obstacles as necessary
+  checkSonar();
+  moveAndAvoid(); 
 
-      aprint++;
-      if (aprint == 200 )
-      {
-        aprint = 0;
-        Serial2.print("wp "); Serial2.print(current_waypoint);
-        Serial2.print("_ch "); Serial2.print(currentHeading);
-        Serial2.print("_th "); Serial2.print(targetHeading);
-        Serial2.print("_eh "); Serial2.print(headingError);
-        Serial2.print("_di "); Serial2.print(distanceToTarget);
-        Serial2.println();
-      }
-
-    }
-    else
-    {
-      stop();
-    }
-  }
+// Serial.print("_ch "); Serial.print(currentHeading);
+// Serial.print("_th "); Serial.print(targetHeading);
+// Serial.print("_eh "); Serial.print(headingError);
+// Serial.print("_di "); Serial.print(distanceToTarget);
+// Serial.println();
 }
 
+// Functions for reading GPS module and navigate to the next waypoint
+/* ================================================================================================================================================
+================================================================================================================================================ */
 void processGPS()
 {
   if (gps.location.isValid())
@@ -217,29 +210,29 @@ int distanceToWaypoint()
   return distanceToTarget;
 }
 
-
+// Get the current Heading Degree
 int readCompass()
 {
-  Vector norm = compass.readNormalize();
-  float heading = atan2(norm.YAxis, norm.XAxis);  // Calculate heading
-
   // Set declination angle on your location and fix heading
   // You can find your declination on: http://magnetic-declination.com/
   // (+) Positive or (-) for negative
   // For Bytom / Poland declination angle is 4'26E (positive)
-  //float declinationAngle = (4.0 + (26.0 / 60.0)) / (180 / M_PI);
+  // float declinationAngle = (4.0 + (26.0 / 60.0)) / (180 / M_PI);
   // Formula: (deg + (min / 60.0)) / (180 / M_PI);
   // For Surabaya declination angle is 0'54E (positive)
-  float declinationAngle = (0 + (54.0 / 60.0)) / (180 / M_PI);
-  heading += declinationAngle;
 
-  // Correct for heading < 0deg and heading > 360deg
-  if (heading < 0)  heading += 2 * PI;
-  if (heading > 2 * PI) heading -= 2 * PI;
-
-  // Convert to degrees
-  float headingDegrees = heading * 180 / M_PI;
+  /* Query result for La Jolla, San Diego 
+  Magnetic Declination: +11° 7'
+  Declination is POSITIVE (EAST)
+  Inclination: 58° 0'
+  Magnetic field strength: 45810.8 nT
+  Declination angle is 7'11E (positive)
+  */
+  float declinationAngle = (7.0 + (11.0 / 60.0)) / (180 / M_PI);
+  compass.setDeclinationAngle(declinationAngle);
+  headingDegrees=compass.getHeadingDegrees();
   return ((int)headingDegrees);
+
 }
 
 void nextWaypoint()
@@ -262,55 +255,29 @@ void nextWaypoint()
   }
 }
 
-
-int error_output;
 void calcDesiredTurn(void)
 {
-  headingError = targetHeading - currentHeading;  // calculate where we need to turn to head to destination
-
-  // adjust for compass wrap
-  if (headingError < -180)
-    headingError  += 360;
-  if (headingError > 180)
-    headingError -= 360;
-
-
-  // calculate which way to turn to intercept the targetHeading
-  if (abs(headingError) <= HEADING_TOLERANCE)      // if within tolerance, don't turn
-    error_output = 0;
-  else if (headingError < 60 && headingError > -60)
-  {
-    error_output = headingError;
-  }
-  else if (headingError >= 60)
-    error_output = 100;
-  else if (headingError <= -60)
-    error_output = -100;
-
-}
-float Kp, Kd;
-void move_robot()
-{
-  if (error_output == 0)
-  {
-    advance(60, 60); //0-255
-  }
-  else if (error_output < 60)
-  {
-    if (error_output < 0)
-      advance(60 + error_output, 60);
+    // calculate where we need to turn to head to destination
+    headingError = targetHeading - currentHeading;
+    
+    // adjust for compass wrap
+    if (headingError < -180)      
+      headingError += 360;
+    if (headingError > 180)
+      headingError -= 360;
+  
+    // calculate which way to turn to intercept the targetHeading
+    if (abs(headingError) <= HEADING_TOLERANCE)      // if within tolerance, don't turn
+      turnDirection = straight;  
+    else if (headingError < 0)
+      turnDirection = left;
+    else if (headingError > 0)
+      turnDirection = right;
     else
-      advance(60, 60 - error_output);
-  }
-  else if (error_output == 100)
-  {
-    advance(50, -50); //0-255
-  }
-  else if (error_output == -100)
-  {
-    advance(50, -50); //0-255
-  }
-}
+      turnDirection = straight;
+ 
+} 
+
 
 // Functions for motor driving
 /* ================================================================================================================================================
@@ -355,16 +322,13 @@ void checkSonar(void)
 
 void moveAndAvoid(void)
 {
-
     if (sonarDistance >= SAFE_DISTANCE)       // no close objects in front of car
         {
            if (turnDirection == straight)
              speed = FAST_SPEED;
            else
              speed = TURN_SPEED;
-           driveMotor->setSpeed(speed);
-           driveMotor->run(FORWARD);       
-           turnMotor->run(turnDirection);
+           forward(speed);
            return;
         }
       
