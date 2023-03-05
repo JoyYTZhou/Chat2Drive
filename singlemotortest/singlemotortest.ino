@@ -13,9 +13,9 @@ Unless required by applicable law or agreed to in writing, software distributed 
  
 #include "BTS7960.h"
 
-const uint8_t EN = 8;
-const uint8_t L_PWM = 6;
-const uint8_t R_PWM = 5;
+const uint8_t EN = 24;
+const uint8_t L_PWM = 8;
+const uint8_t R_PWM = 7;
 
 BTS7960 motorController(EN, L_PWM, R_PWM);
 
@@ -23,13 +23,13 @@ void setup()
 {
 }
 
-void singleMotorTest()
+void loop()
 {
   motorController.Enable();
 
   for(int speed = 0 ; speed < 255; speed+=10)
   {
-  motorController.TurnLeft(speed);
+  motorController.TurnRight(speed);
   delay(100);
   }  
 
@@ -37,7 +37,7 @@ void singleMotorTest()
   
   for(int speed = 255 ; speed > 0; speed-=10)
   {
-  motorController.TurnLeft(speed);
+  motorController.TurnRight(speed);
   delay(100);
   }  
   motorController.Stop();
