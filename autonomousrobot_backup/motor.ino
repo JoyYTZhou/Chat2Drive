@@ -28,7 +28,7 @@ void stop()
 }
 
 
-void advance(int left, int right)
+void advance(int left, int kanan)
 {
   if (left < 0)
   {
@@ -43,16 +43,16 @@ void advance(int left, int right)
   }
   analogWrite(Pin_E_L, left);
 
-  if (right < 0)
+  if (kanan < 0)
   {
     digitalWrite(Pin_D1_R, HIGH);
     digitalWrite(Pin_D2_R, LOW);
-    right = -1 * right;
+    kanan = -1 * kanan;
   }
   else
   {
     digitalWrite(Pin_D1_R, LOW);
     digitalWrite(Pin_D2_R, HIGH);
   }
-  analogWrite(Pin_E_R, right);
+  analogWrite(Pin_E_R, kanan);
 }

@@ -1,67 +1,44 @@
 #include <TinyGPS++.h>
-static const uint32_t GPSBaud = 9600; // NEO-6M has a GPS baud rate of 9600
-TinyGPSPlus gps; 
+// source from https://github.com/neosarchizo/TinyGPS/tree/master/examples 
+
+static const uint32_t GPSBaud = 9600;
+TinyGPSPlus gps;
 
 // Compass navigation
 #include <Wire.h>
 #include <DFRobot_QMC5883.h>
-DFRobot_QMC5883 compass(&Wire, /*I2C addr*/QMC5883_ADDRESS); // Default init status for QMC5883 compass
+DFRobot_QMC5883 compass; // Default init status
 int targetHeading;              // the direction of intended angle
 int currentHeading;             // current angular direction
 int headingError;               // signed (+/-) difference between targetHeading and currentHeading
 #define HEADING_TOLERANCE 8     // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
 
-// GPS location
 #include "math.h"
 #include <Adafruit_GPS.h>
-Adafruit_GPS GPS(&Serial3); 
+Adafruit_GPS GPS(&Serial3);
 float currentLat,
       currentLong;
 
 int distanceToTarget,            // current distance to target (current waypoint)
     originalDistanceToTarget;    // distance to original waypoing when we started navigating to it
 
-// Motor Driver
-#include "BTS7960.h"
-const uint8_t EN1 = 53;
-const uint8_t L_PWM1 = 6;
-const uint8_t R_PWM1 = 5;
-const uint8_t EN2 = 52;
-const uint8_t L_PWM2 = 8;
-const uint8_t R_PWM2 = 7;
-BTS7960 motorController1(EN1, L_PWM1, R_PWM1); 
-BTS7960 motorController2(EN2, L_PWM2, R_PWM2);
-
-#include <NewPing.h> // Ultrasonic sensor library
-
-// Ultrasonic ping sensor
-#define TRIGGER_PIN  11      
-#define ECHO_PIN  22        
-#define MAX_DISTANCE_CM 250                        // Maximum distance we want to ping for (in CENTIMETERS). Maximum sensor distance is rated at 400-500cm.  
-#define MAX_DISTANCE_IN (MAX_DISTANCE_CM / 2.5)    // same distance, in inches
-int sonarDistance;
-NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);     // NewPing setup of pins and maximum distance.
-MovingAverage<int, 3> sonarAverage(MAX_DISTANCE_IN);       // moving average of last n pings, initialize at MAX_DISTANCE_IN
-
-// Waypoints Definition
-#define WAYPOINT_DIST_TOLERANE 3   //tolerance in meters to waypoint; once within this tolerance, will advance to the next waypoint
+#define WAYPOINT_DIST_TOLERANE  3   //tolerance in meters to waypoint; once within this tolerance, will advance to the next waypoint
 #define stopwaypoint 5                  //second
 int current_waypoint = 0;
-
 // Slide South -lat
 float waypointList[10][2] = {
-  { 32.874959, -117.240641}, // Fairbank Coffee
-  { 32.874787, -117.241373}, 
-  { 32.874727, -117.241808}, 
+  { -7.297828, 112.801938},
+  { -7.297885, 112.802251}, //-7.297873, 112.802250
+  { -7.297931, 112.802584}, //-7.297925, 112.802584 //-7.298058, 112.803043
 };
 
 float targetLat = waypointList[0][0];
 float targetLong = waypointList[0][1];
-
 void setup()
 {
   Serial.begin(9600);         //Debug
   Serial3.begin(9600);       //GPS
+  // Serial2.begin(9600);        //Bluetooth
 
   pinMode(19, INPUT_PULLUP);
   setup_motor();
@@ -79,15 +56,15 @@ void setup()
     delay(500);
   }
   // Set measurement range
-  compass.setRange(QMC5883_RANGE_2GA);
+  compass.setRange(QMC5883_RANGE_1_3GA);
   // Set measurement mode
   compass.setMeasurementMode(QMC5883_CONTINOUS);
   // Set data rate
   compass.setDataRate(QMC5883_DATARATE_50HZ);
   // Set number of samples averaged
-  compass.setSamples(QMC5883_SAMPLES_8);
+  compass.setSamples(HMC5883L_SAMPLES_8);
   // Set calibration offset. See HMC5883L_calibration.ino
-  // compass.setOffset(0, 0);
+  compass.setOffset(0, 0);
   Serial.println("Start");
 
   Serial.println(waypointList[0][0], 6);
@@ -98,6 +75,9 @@ void setup()
 
 }
 
+String inputString = "";
+String inputdata = "";
+bool stringComplete = false;
 int id = 0;
 int mode;
 
@@ -113,6 +93,60 @@ void loop()
     if (gps.encode(Serial3.read()))
       processGPS();
 
+  /////////////////////////Data from phone
+  if (stringComplete)
+  {
+    Serial.println(inputString);
+    int n = 0;
+    for (int i = 0; i < 30; i++)
+    {
+      if (inputString[i] == 0)
+      {
+        n++;
+        if (n == 4)
+          break;
+      }
+      else
+      {
+        val[n] += inputString[i];
+      }
+    }
+
+    if (val[1] == "1")
+    {
+      targetLat = val[2].toFloat();
+      targetLong = val[3].toFloat();
+    }
+
+    /////////////////////////////////// Toogle Switch
+    inputString = "";
+    val[1] = "";
+    val[2] = "";
+    val[3] = "";
+    stringComplete = false;
+  }
+
+
+  if (sensorVal == HIGH)
+  {
+    stop();
+    //    Serial.print("la "); Serial.print(currentLat, 6);
+    //    Serial.print("_lo "); Serial.print(currentLong, 6);
+    //    Serial.print("_la "); Serial.print(targetLat, 6);
+    //    Serial.print("_lo "); Serial.print(targetLong, 6);
+    //    Serial.println();
+    nprint++;
+    if (nprint == 10000)
+    {
+      nprint = 0;
+
+      Serial2.print("la "); Serial2.print(currentLat, 6);
+      Serial2.print("_lo "); Serial2.print(currentLong, 6);
+      Serial2.print("_la "); Serial2.print(targetLat, 6);
+      Serial2.print("_lo "); Serial2.print(targetLong, 6);
+      Serial2.println();
+    }
+  }
   else if (sensorVal == LOW)
   {
     // memastikan ada data GPS di robot dan HP
@@ -312,127 +346,17 @@ void move_robot()
   }
 }
 
-// Functions for motor driving
-/* ================================================================================================================================================
-================================================================================================================================================ */
-void forward(int speed) {
-  motorController1.TurnRight(speed);
-  motorController2.TurnLeft(speed);
-}
-
-void backward(int speed) {
-  motorController1.TurnLeft(speed);
-  motorController2.TurnRight(speed);
-}
-
-void disable() {
-  motorController1.Disable();
-  motorController2.Disable();
-}
-
-void enable() {
-  motorController1.Enable();
-  motorController2.Enable();
-}
-
-void stop() {
-  motorController1.Stop();
-  motorController2.Stop();
-}
-
-// Functions for distance sensing
-/* ================================================================================================================================================
-================================================================================================================================================ */
-void checkSonar(void)
-{   
-  int dist;
-
-  dist = sonar.ping_in();                   // get distqnce in inches from the sensor
-  if (dist == 0)                                // if too far to measure, return max distance;
-    dist = MAX_DISTANCE_IN;  
-  sonarDistance = sonarAverage.add(dist);      // add the new value into moving average, use resulting average
-} 
-
-void moveAndAvoid(void)
+/*
+void serialEvent2() //bluetooth
 {
-
-    if (sonarDistance >= SAFE_DISTANCE)       // no close objects in front of car
-        {
-           if (turnDirection == straight)
-             speed = FAST_SPEED;
-           else
-             speed = TURN_SPEED;
-           driveMotor->setSpeed(speed);
-           driveMotor->run(FORWARD);       
-           turnMotor->run(turnDirection);
-           return;
-        }
-      
-     if (sonarDistance > TURN_DISTANCE && sonarDistance < SAFE_DISTANCE)    // not yet time to turn, but slow down
-       {
-         if (turnDirection == straight)
-           speed = NORMAL_SPEED;
-         else
-           {
-              speed = TURN_SPEED;
-              turnMotor->run(turnDirection);      // alraedy turning to navigate
-            }
-         driveMotor->setSpeed(speed);
-         driveMotor->run(FORWARD);       
-         return;
-       }
-     
-     if (sonarDistance <  TURN_DISTANCE && sonarDistance > STOP_DISTANCE)  // getting close, time to turn to avoid object        
-        {
-          speed = SLOW_SPEED;
-          driveMotor->setSpeed(speed);      // slow down
-          driveMotor->run(FORWARD); 
-          switch (turnDirection)
-          {
-            case straight:                  // going straight currently, so start new turn
-              {
-                if (headingError <= 0)
-                  turnDirection = left;
-                else
-                  turnDirection = right;
-                turnMotor->run(turnDirection);  // turn in the new direction
-                break;
-              }
-            case left:                         // if already turning left, try right
-              {
-                turnMotor->run(TURN_RIGHT);    
-                break;  
-              }
-            case right:                       // if already turning right, try left
-              {
-                turnMotor->run(TURN_LEFT);
-                break;
-              }
-          } // end SWITCH
-          
-         return;
-        }  
-
-
-     if (sonarDistance <  STOP_DISTANCE)          // too close, stop and back up
-       {
-         driveMotor->run(RELEASE);            // stop 
-         turnMotor->run(RELEASE);             // straighten up
-         turnDirection = straight;
-         driveMotor->setSpeed(NORMAL_SPEED);  // go back at higher speet
-         driveMotor->run(BACKWARD);           
-         while (sonarDistance < TURN_DISTANCE)       // backup until we get safe clearance
-           {
-              if(GPS.parse(GPS.lastNMEA()) )
-                 processGPS();  
-              currentHeading = readCompass();    // get our current heading
-              calcDesiredTurn();                // calculate how we would optimatally turn, without regard to obstacles      
-              checkSonar();
-              updateDisplay();
-              delay(100);
-           } // while (sonarDistance < TURN_DISTANCE)
-         driveMotor->run(RELEASE);        // stop backing up
-         return;
-        } // end of IF TOO CLOSE
-     
-} 
+  while (Serial2.available())
+  {
+    char inChar = (char)Serial2.read();
+    inputString += inChar;
+    if (inChar == 'v')
+    {
+      stringComplete = true;
+    }
+  }
+}
+*/
