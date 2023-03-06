@@ -41,7 +41,6 @@ BTS7960 motorController2(EN2, L_PWM2, R_PWM2);
 #define MAX_DISTANCE_IN (MAX_DISTANCE_CM / 2.5)    // same distance, in inches
 int sonarDistance;
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);     // NewPing setup of pins and maximum distance.
-MovingAverage<int, 3> sonarAverage(MAX_DISTANCE_IN);       // moving average of last n pings, initialize at MAX_DISTANCE_IN
 
 // Object avoidance distances (in inches)
 #define SAFE_DISTANCE 70
@@ -129,14 +128,16 @@ void loop()
   calcDesiredTurn();
 
   // distance in front of us, move, and avoid obstacles as necessary
-  checkSonar();
+  // checkSonar();
+  sonarDistance=100;
   moveAndAvoid(); 
+  delay(2000);
 
-// Serial.print("_ch "); Serial.print(currentHeading);
-// Serial.print("_th "); Serial.print(targetHeading);
-// Serial.print("_eh "); Serial.print(headingError);
-// Serial.print("_di "); Serial.print(distanceToTarget);
-// Serial.println();
+  Serial.print("_ch "); Serial.print(currentHeading);
+  Serial.print("_th "); Serial.print(targetHeading);
+  Serial.print("_eh "); Serial.print(headingError);
+  Serial.print("_di "); Serial.print(distanceToTarget);
+  Serial.println();
 }
 
 // Functions for reading GPS module and navigate to the next waypoint
@@ -230,7 +231,7 @@ int readCompass()
   */
   float declinationAngle = (7.0 + (11.0 / 60.0)) / (180 / M_PI);
   compass.setDeclinationAngle(declinationAngle);
-  headingDegrees=compass.getHeadingDegrees();
+  float headingDegrees=compass.getHeadingDegrees();
   return ((int)headingDegrees);
 
 }
@@ -282,14 +283,23 @@ void calcDesiredTurn(void)
 // Functions for motor driving
 /* ================================================================================================================================================
 ================================================================================================================================================ */
-void forward(int speed) {
-  motorController1.TurnRight(speed);
-  motorController2.TurnLeft(speed);
-}
-
-void backward(int speed) {
-  motorController1.TurnLeft(speed);
-  motorController2.TurnRight(speed);
+void move(int speed, int turndirection) {
+  switch(turndirection) {
+    case straight:
+      motorController1.TurnRight(speed);
+      motorController2.TurnLeft(speed);
+      break;
+    case back:
+      motorController1.TurnLeft(speed);
+      motorController2.TurnRight(speed); 
+      break;
+    case left:
+      motorController1.TurnRight(speed);
+      motorController2.Stop();
+    case right:
+      motorController1.Stop();
+      motorController2.TurnRight(speed);
+  }
 }
 
 void disable() {
@@ -312,91 +322,106 @@ void stop() {
 ================================================================================================================================================ */
 void checkSonar(void)
 {   
+  unsigned long time;
   int dist;
-
-  dist = sonar.ping_in();                   // get distqnce in inches from the sensor
+  time = sonar.ping_median(5, MAX_DISTANCE_CM);
+  dist = NewPing::convert_in(time);                   // get distqnce in inches from the sensor
   if (dist == 0)                                // if too far to measure, return max distance;
     dist = MAX_DISTANCE_IN;  
-  sonarDistance = sonarAverage.add(dist);      // add the new value into moving average, use resulting average
+  sonarDistance = dist;      // add the new value into moving average, use resulting average
 } 
+
+// Temporary debug functions
+void printDirection(int turnDirection) {
+  switch(turnDirection) {
+    case straight:
+      Serial.println("Go forward");
+    case left:
+      Serial.println("Go to your left");
+    case right:
+      Serial.println("Go to your right");
+    case back:
+      Serial.println("Turn around");
+  }
+}
 
 void moveAndAvoid(void)
 {
-    if (sonarDistance >= SAFE_DISTANCE)       // no close objects in front of car
+    if (sonarDistance >= SAFE_DISTANCE) {       // no close objects in front of car
+      {
+          if (turnDirection == straight)
+            speed = FAST_SPEED;
+          else {
+            speed = TURN_SPEED;
+            move(speed, turnDirection);
+            printDirection(turnDirection);
+          }
+          move(speed, straight);
+          return;
+      }
+    }
+    if (sonarDistance > TURN_DISTANCE && sonarDistance < SAFE_DISTANCE) // not yet time to turn, but slow down
+    {   
+      {
+        if (turnDirection == straight)
+          speed = NORMAL_SPEED;
+        else
         {
-           if (turnDirection == straight)
-             speed = FAST_SPEED;
-           else
-             speed = TURN_SPEED;
-           forward(speed);
-           return;
+          speed = TURN_SPEED;
+          move(speed, turnDirection);      // alraedy turning to navigate
+          printDirection(turnDirection);
         }
-      
-     if (sonarDistance > TURN_DISTANCE && sonarDistance < SAFE_DISTANCE)    // not yet time to turn, but slow down
-       {
-         if (turnDirection == straight)
-           speed = NORMAL_SPEED;
-         else
-           {
-              speed = TURN_SPEED;
-              turnMotor->run(turnDirection);      // alraedy turning to navigate
-            }
-         driveMotor->setSpeed(speed);
-         driveMotor->run(FORWARD);       
-         return;
-       }
+        move(speed, straight);       
+        return;
+      }
+    }
      
-     if (sonarDistance <  TURN_DISTANCE && sonarDistance > STOP_DISTANCE)  // getting close, time to turn to avoid object        
+    if (sonarDistance <  TURN_DISTANCE && sonarDistance > STOP_DISTANCE)  // getting close, time to turn to avoid object        
+    {
+      speed = SLOW_SPEED;
+      move(speed, straight);      // slow down
+      switch (turnDirection)
+      {
+        case straight:                  // going straight currently, so start new turn
         {
-          speed = SLOW_SPEED;
-          driveMotor->setSpeed(speed);      // slow down
-          driveMotor->run(FORWARD); 
-          switch (turnDirection)
-          {
-            case straight:                  // going straight currently, so start new turn
-              {
-                if (headingError <= 0)
-                  turnDirection = left;
-                else
-                  turnDirection = right;
-                turnMotor->run(turnDirection);  // turn in the new direction
-                break;
-              }
-            case left:                         // if already turning left, try right
-              {
-                turnMotor->run(TURN_RIGHT);    
-                break;  
-              }
-            case right:                       // if already turning right, try left
-              {
-                turnMotor->run(TURN_LEFT);
-                break;
-              }
-          } // end SWITCH
-          
-         return;
-        }  
+          if (headingError <= 0)
+            turnDirection = left;
+          else
+            turnDirection = right;
+          move(TURN_SPEED, turnDirection);  // turn in the new direction
+          break;
+        }
+        case left:                         // if already turning left, try right
+        {
+          move(TURN_SPEED, turnDirection);    
+          break;  
+        }
+        case right:                       // if already turning right, try left
+        {
+          move(TURN_SPEED, turnDirection);
+          break;
+        }
+      }
+      return;
+    }  
 
-
-     if (sonarDistance <  STOP_DISTANCE)          // too close, stop and back up
-       {
-         driveMotor->run(RELEASE);            // stop 
-         turnMotor->run(RELEASE);             // straighten up
-         turnDirection = straight;
-         driveMotor->setSpeed(NORMAL_SPEED);  // go back at higher speet
-         driveMotor->run(BACKWARD);           
-         while (sonarDistance < TURN_DISTANCE)       // backup until we get safe clearance
-           {
-              if(GPS.parse(GPS.lastNMEA()) )
-                 processGPS();  
-              currentHeading = readCompass();    // get our current heading
-              calcDesiredTurn();                // calculate how we would optimatally turn, without regard to obstacles      
-              checkSonar();
-              updateDisplay();
-              delay(100);
-           } // while (sonarDistance < TURN_DISTANCE)
-         driveMotor->run(RELEASE);        // stop backing up
-         return;
-        } // end of IF TOO CLOSE
-     
+    if (sonarDistance <  STOP_DISTANCE)          // too close, stop and back up
+    {
+      stop();            // stop 
+      turnDirection=back;
+      move(SLOW_SPEED, turnDirection); // straighten up
+      delay(200);
+      move(NORMAL_SPEED, turnDirection); // go back at higher speed
+      while (sonarDistance < TURN_DISTANCE)       // backup until we get safe clearance
+      {
+        if(GPS.parse(GPS.lastNMEA()) )
+            processGPS();  
+        currentHeading = readCompass();    // get our current heading
+        calcDesiredTurn();                // calculate how we would optimatally turn, without regard to obstacles      
+        checkSonar();
+        delay(100);
+      }
+      stop(); // stop backing up
+      return;
+    } // end of IF TOO CLOSE
 } 

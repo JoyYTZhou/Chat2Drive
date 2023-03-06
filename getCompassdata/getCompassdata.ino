@@ -96,7 +96,7 @@ void loop()
   Serial.print(mag.YAxis);
   Serial.print(" Z:");
   Serial.println(mag.ZAxis);
-  Serial.print("Degress = ");
-  Serial.println(mag.HeadingDegress);
+  Serial.print("Degrees = ");
+  Serial.println(mag.HeadingDegrees);
   delay(1000);
 }
