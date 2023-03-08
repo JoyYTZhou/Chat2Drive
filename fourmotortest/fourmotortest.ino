@@ -22,14 +22,29 @@ const uint8_t R_PWM2 = 7;
 BTS7960 motorController1(EN1, L_PWM1, R_PWM1);
 BTS7960 motorController2(EN2, L_PWM2, R_PWM2);
 
-void forward(int speed) {
-  motorController1.TurnRight(speed);
-  motorController2.TurnLeft(speed);
-}
+// Directions
+enum directions {straight=0, left=1, right=2, back=3} ;
+directions turnDirection = straight;
 
-void backward(int speed) {
-  motorController1.TurnLeft(speed);
-  motorController2.TurnRight(speed);
+void move(int speed, int turndirection) {
+  switch(turndirection) {
+    case straight:
+      motorController1.TurnRight(speed);
+      motorController2.TurnLeft(speed);
+      break;
+    case back:
+      motorController1.TurnLeft(speed);
+      motorController2.TurnRight(speed); 
+      break;
+    case left:
+      stop();
+      motorController1.TurnRight(speed);
+      break;
+    case right:
+      stop();
+      motorController2.TurnLeft(speed);
+      break;
+  }
 }
 
 void disable() {
@@ -54,23 +69,11 @@ void setup()
 void loop()
 {
   enable();
-
-  for(int speed = 0 ; speed < 255; speed+=10)
-  {
-    backward(speed);
-    delay(100);
-  }  
-
+  move(100, right);
+  // motorController2.TurnLeft(100); // Left wheel forward
+  // motorController2.TurnRight(100); // Left wheel backward
+  delay(500);
   stop();
-  
-  for(int speed = 255 ; speed > 0; speed-=10)
-  {
-    backward(speed);
-    delay(100);
-  }  
-  
-  stop();
-
   disable();
   
   delay(5000);

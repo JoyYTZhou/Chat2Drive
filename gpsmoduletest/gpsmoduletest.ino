@@ -41,8 +41,8 @@ void processGPS()
   {
     currentLat = gps.location.lat();
     currentLong = gps.location.lng();
-    Serial.println(currentLat);
-    Serial.println(currentLong);
+    Serial.println(currentLat, 6);
+    Serial.println(currentLong, 6);
   }
 }
 

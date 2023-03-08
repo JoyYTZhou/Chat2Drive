@@ -1,0 +1,6 @@
+{
+    "configuration": "cpu=atmega2560",
+    "board": "arduino:avr:mega",
+    "sketch": "autonomousrobot\\autonomousrobot.ino",
+    "port": "COM5"
+}

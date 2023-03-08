@@ -4,9 +4,9 @@ TinyGPSPlus gps;
 
 // Compass navigation
 #include <Wire.h>
-#include <DFRobot_QMC5883.h>
-DFRobot_QMC5883 compass(&Wire, /*I2C addr*/QMC5883_ADDRESS); // Default init status for QMC5883 compass
-int targetHeading;              // the direction of intended angle
+#include <QMC5883LCompass.h>
+QMC5883LCompass compass; // Default init status for QMC5883 compass
+int targetHeading;              // the direction of intended angle, course in degrees (North=0, West=270) from position 1 to position 2,
 int currentHeading;             // current angular direction
 int headingError;               // signed (+/-) difference between targetHeading and currentHeading
 #define HEADING_TOLERANCE 8     // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
@@ -67,7 +67,7 @@ int current_waypoint = 0;
 float waypointList[10][2] = {
   { 32.874959, -117.240641}, // Fairbank Coffee
   { 32.874787, -117.241373}, 
-  { 32.874727, -117.241808}, 
+  { 32.874727, -118.241808}, 
 };
 
 float targetLat = waypointList[0][0];
@@ -84,21 +84,7 @@ void setup()
   GPS.sendCommand(PGCMD_NOANTENNA);                // turn off antenna status info
   delay(1000);
 
-  while (!compass.begin())
-  {
-    Serial.println("Could not find a valid QMC5883L sensor, check wiring!");
-    delay(500);
-  }
-  // Set measurement range
-  compass.setRange(QMC5883_RANGE_2GA);
-  // Set measurement mode
-  compass.setMeasurementMode(QMC5883_CONTINOUS);
-  // Set data rate
-  compass.setDataRate(QMC5883_DATARATE_50HZ);
-  // Set number of samples averaged
-  compass.setSamples(QMC5883_SAMPLES_8);
-  // Set calibration offset. See HMC5883L_calibration.ino
-  // compass.setOffset(0, 0);
+  compass.init();
   Serial.println("Start");
 
   Serial.println(waypointList[0][0], 6);
@@ -109,13 +95,6 @@ void setup()
 
 }
 
-int id = 0;
-int mode;
-
-String val[5];
-int nprint = 0;
-int aprint = 0;
-
 void loop()
 {
   
@@ -125,19 +104,19 @@ void loop()
 
 
   currentHeading = readCompass();
+  Serial.println("Current heading is ");
+  Serial.println(currentHeading);
   calcDesiredTurn();
 
   // distance in front of us, move, and avoid obstacles as necessary
   // checkSonar();
   sonarDistance=100;
-  moveAndAvoid(); 
-  delay(2000);
+  moveAndAvoid();
+  // Serial.println("Current distance to waypoint 1 is ");
+  // Serial.println(distanceToTarget);
+  // Serial.println("Current heading degree to ");
+  // Serial.println(targetHeading);
 
-  Serial.print("_ch "); Serial.print(currentHeading);
-  Serial.print("_th "); Serial.print(targetHeading);
-  Serial.print("_eh "); Serial.print(headingError);
-  Serial.print("_di "); Serial.print(distanceToTarget);
-  Serial.println();
 }
 
 // Functions for reading GPS module and navigate to the next waypoint
@@ -156,7 +135,7 @@ void processGPS()
   }
 }
 
-// returns course in degrees (North=0, West=270) from position 1 to position 2,
+// targetHeading: returns course in degrees (North=0, West=270) from position 1 to position 2,
 // both specified as signed decimal-degrees latitude and longitude.
 // Because Earth is no exact sphere, calculated course may be off by a tiny fraction.
 // copied from TinyGPS library
@@ -177,7 +156,7 @@ int courseToWaypoint()
   return targetHeading;
 }
 
-// returns distance in meters between two positions, both specified
+// distanceToTarget: returns distance in meters between two positions, both specified
 // as signed decimal-degrees latitude and longitude. Uses great-circle
 // distance computation for hypothetical sphere of radius 6372795 meters.
 // Because Earth is no exact sphere, rounding errors may be up to 0.5%.
@@ -211,7 +190,7 @@ int distanceToWaypoint()
   return distanceToTarget;
 }
 
-// Get the current Heading Degree
+// currentHeading: Get the current Heading Degree
 int readCompass()
 {
   // Set declination angle on your location and fix heading
@@ -227,13 +206,27 @@ int readCompass()
   Declination is POSITIVE (EAST)
   Inclination: 58° 0'
   Magnetic field strength: 45810.8 nT
-  Declination angle is 7'11E (positive)
+  Declination angle is +11 deg 7 min East (positive)
   */
-  float declinationAngle = (7.0 + (11.0 / 60.0)) / (180 / M_PI);
-  compass.setDeclinationAngle(declinationAngle);
-  float headingDegrees=compass.getHeadingDegrees();
-  return ((int)headingDegrees);
+  int a;
 
+  // Read compass values
+  // compass.setCalibration(-1481,1997,-1605,1462,-1568,2831);
+  compass.setCalibration(-833, 1265, -763, 1226, -390, 1578);
+  compass.read();
+  // Return Azimuth reading (La Jolla declination added into the method)
+  a = compass.getAzimuth();
+  // a = (int) (a-15+7/60.0);
+
+  // Correct for when signs are reversed.
+  if(a < 0)
+    a += 2*180;
+    
+  // Check for wrap due to addition of declination.
+  if(a > 2*180)
+    a -= 2*180;
+  
+  return a;
 }
 
 void nextWaypoint()
@@ -283,7 +276,11 @@ void calcDesiredTurn(void)
 // Functions for motor driving
 /* ================================================================================================================================================
 ================================================================================================================================================ */
-void move(int speed, int turndirection) {
+// motorController2.TurnLeft(100); // Left wheel forward
+// motorController2.TurnRight(100); // Left wheel backward
+// motorController1.TurnRight(100); // Right wheel forward
+// motorController1.TurnLeft(100); // Right wheel backward
+void moveCar(int speed, int turndirection) {
   switch(turndirection) {
     case straight:
       motorController1.TurnRight(speed);
@@ -294,11 +291,13 @@ void move(int speed, int turndirection) {
       motorController2.TurnRight(speed); 
       break;
     case left:
+      stop();
       motorController1.TurnRight(speed);
-      motorController2.Stop();
+      break;
     case right:
-      motorController1.Stop();
-      motorController2.TurnRight(speed);
+      stop();
+      motorController2.TurnLeft(speed);
+      break;
   }
 }
 
@@ -353,10 +352,9 @@ void moveAndAvoid(void)
             speed = FAST_SPEED;
           else {
             speed = TURN_SPEED;
-            move(speed, turnDirection);
-            printDirection(turnDirection);
+            moveCar(speed, turnDirection);
           }
-          move(speed, straight);
+          moveCar(speed, straight);
           return;
       }
     }
@@ -368,10 +366,10 @@ void moveAndAvoid(void)
         else
         {
           speed = TURN_SPEED;
-          move(speed, turnDirection);      // alraedy turning to navigate
+          moveCar(speed, turnDirection);      // alraedy turning to navigate
           printDirection(turnDirection);
         }
-        move(speed, straight);       
+        moveCar(speed, straight);       
         return;
       }
     }
@@ -379,7 +377,7 @@ void moveAndAvoid(void)
     if (sonarDistance <  TURN_DISTANCE && sonarDistance > STOP_DISTANCE)  // getting close, time to turn to avoid object        
     {
       speed = SLOW_SPEED;
-      move(speed, straight);      // slow down
+      moveCar(speed, straight);      // slow down
       switch (turnDirection)
       {
         case straight:                  // going straight currently, so start new turn
@@ -388,17 +386,17 @@ void moveAndAvoid(void)
             turnDirection = left;
           else
             turnDirection = right;
-          move(TURN_SPEED, turnDirection);  // turn in the new direction
+          moveCar(TURN_SPEED, turnDirection);  // turn in the new direction
           break;
         }
         case left:                         // if already turning left, try right
         {
-          move(TURN_SPEED, turnDirection);    
+          moveCar(TURN_SPEED, turnDirection);    
           break;  
         }
         case right:                       // if already turning right, try left
         {
-          move(TURN_SPEED, turnDirection);
+          moveCar(TURN_SPEED, turnDirection);
           break;
         }
       }
@@ -409,9 +407,9 @@ void moveAndAvoid(void)
     {
       stop();            // stop 
       turnDirection=back;
-      move(SLOW_SPEED, turnDirection); // straighten up
+      moveCar(SLOW_SPEED, turnDirection); // straighten up
       delay(200);
-      move(NORMAL_SPEED, turnDirection); // go back at higher speed
+      moveCar(NORMAL_SPEED, turnDirection); // go back at higher speed
       while (sonarDistance < TURN_DISTANCE)       // backup until we get safe clearance
       {
         if(GPS.parse(GPS.lastNMEA()) )
