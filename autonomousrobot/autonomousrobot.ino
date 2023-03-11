@@ -107,15 +107,17 @@ void loop()
   Serial.println("Current heading is ");
   Serial.println(currentHeading);
   calcDesiredTurn();
+  Serial.println("Target heading is ");
+  Serial.println(targetHeading);
+  Serial.println("Turn direction should be ");
+  printDirection(turnDirection);
+  
 
   // distance in front of us, move, and avoid obstacles as necessary
   // checkSonar();
   sonarDistance=100;
   moveAndAvoid();
-  // Serial.println("Current distance to waypoint 1 is ");
-  // Serial.println(distanceToTarget);
-  // Serial.println("Current heading degree to ");
-  // Serial.println(targetHeading);
+  
 
 }
 
@@ -212,7 +214,8 @@ int readCompass()
 
   // Read compass values
   // compass.setCalibration(-1481,1997,-1605,1462,-1568,2831);
-  compass.setCalibration(-833, 1265, -763, 1226, -390, 1578);
+  // compass.setCalibration(-833, 1265, -763, 1226, -390, 1578);
+  compass.setCalibration(-1071, 1292, -1057, 1515, -667, 1791);
   compass.read();
   // Return Azimuth reading (La Jolla declination added into the method)
   a = compass.getAzimuth();
@@ -335,12 +338,16 @@ void printDirection(int turnDirection) {
   switch(turnDirection) {
     case straight:
       Serial.println("Go forward");
+      break;
     case left:
       Serial.println("Go to your left");
+      break;
     case right:
       Serial.println("Go to your right");
+      break;
     case back:
       Serial.println("Turn around");
+      break;
   }
 }
 

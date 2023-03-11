@@ -69,9 +69,11 @@ void setup()
 void loop()
 {
   enable();
-  move(100, right);
+  move(100, back);
   // motorController2.TurnLeft(100); // Left wheel forward
   // motorController2.TurnRight(100); // Left wheel backward
+  delay(500);
+  move(100, back);
   delay(500);
   stop();
   disable();
