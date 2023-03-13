@@ -48,7 +48,7 @@ NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);     // NewPing setup of p
 #define STOP_DISTANCE 12
 
 // Directions
-enum directions {straight=0, left=1, right=2, back=3} ;
+enum directions {straight=0, left=1, right=2, back=3};
 directions turnDirection = straight;
 
 // Speeds (range: 0 - 255)
@@ -102,7 +102,9 @@ void loop()
     if (gps.encode(Serial3.read()))
       processGPS();
 
-
+  currentLat=32.875204;
+  currentLong=-117.240151;
+  courseToWaypoint();
   currentHeading = readCompass();
   Serial.println("Current heading is ");
   Serial.println(currentHeading);
@@ -114,9 +116,10 @@ void loop()
   
 
   // distance in front of us, move, and avoid obstacles as necessary
-  // checkSonar();
-  sonarDistance=100;
-  moveAndAvoid();
+  checkSonar();
+  Serial.println("Distance to object ahead is ");
+  Serial.println(sonarDistance);
+  // moveAndAvoid();
   
 
 }
@@ -326,8 +329,11 @@ void checkSonar(void)
 {   
   unsigned long time;
   int dist;
+  // sonar.ping_median(iterations [, max_cm_distance]) 
+  // Do multiple pings (default=5), discard out of range pings and return median in microseconds. 
+  // [max_cm_distance] allows you to optionally set a new max distance.
   time = sonar.ping_median(5, MAX_DISTANCE_CM);
-  dist = NewPing::convert_in(time);                   // get distqnce in inches from the sensor
+  dist = NewPing::convert_in(time);             // get distance in inches from the sensor
   if (dist == 0)                                // if too far to measure, return max distance;
     dist = MAX_DISTANCE_IN;  
   sonarDistance = dist;      // add the new value into moving average, use resulting average
