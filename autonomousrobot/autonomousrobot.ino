@@ -70,8 +70,8 @@ int current_waypoint = 0;
 // Slide South -lat
 float waypointList[10][2] = {
   { 32.874959, -117.240641}, // Fairbank Coffee
-  { 32.874787, -117.241373}, 
-  { 32.874727, -118.241808}, 
+  { 32.874331, -117.242406}, // Argo Hall
+  // { 32.874727, -118.241808}, 
 };
 
 float targetLat = waypointList[0][0];
@@ -471,13 +471,13 @@ void newDirection() {
       newDir=left;
     }
     else if (recvDirection=='f') {
-      newDirection=straight;
+      newDir=straight;
     }
     else if (recvDirection=='b') {
-      newDirection=back;
+      newDir=back;
     }
     newData=false;
-    moveCar(newDirection, NORMAL_SPEED);
+    moveCar(newDir, NORMAL_SPEED);
     delay(200);
   }
 }
