@@ -11,6 +11,10 @@ int currentHeading;             // current angular direction
 int headingError;               // signed (+/-) difference between targetHeading and currentHeading
 #define HEADING_TOLERANCE 8     // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
 
+// Direction received by Serial communication
+char recvDirection;       // User-input direction
+bool newData=false; 
+
 // GPS location
 #include "math.h"
 #include <Adafruit_GPS.h>
@@ -76,6 +80,7 @@ float targetLong = waypointList[0][1];
 void setup()
 {
   Serial.begin(9600);         //Debug
+  Serial2.begin(9600);        //Telegram input
   Serial3.begin(9600);        //GPS
 
   GPS.begin(9600);                                // 9600 NMEA default speed
@@ -97,7 +102,6 @@ void setup()
 
 void loop()
 {
-  
   while (Serial3.available() > 0)
     if (gps.encode(Serial3.read()))
       Serial.println("GPS available, reading GPS ...");
@@ -119,10 +123,11 @@ void loop()
   checkSonar();
   Serial.println("Distance to object ahead is ");
   Serial.println(sonarDistance);
-  // moveCar(speed, turnDirection);
-  // delay(500);
-  moveAndAvoid();
 
+  moveAndAvoid();
+  
+  recvOneChar();
+  newDirection();
 }
 
 // Functions for reading GPS module and navigate to the next waypoint
@@ -446,3 +451,33 @@ void moveAndAvoid(void)
       return;
     } // end of IF TOO CLOSE
 } 
+
+// Functions for reading user input data from telegram
+// ================================================================================================================================================
+void recvOneChar() {
+  if (Serial2.available()>0) {
+    recvDirection=Serial2.read();
+    newData=true;
+  }
+}
+
+void newDirection() {
+  if (newData==true) {
+    int newDir;
+    if (recvDirection=='r') {
+      newDir=right;
+    }
+    else if (recvDirection=='l') {
+      newDir=left;
+    }
+    else if (recvDirection=='f') {
+      newDirection=straight;
+    }
+    else if (recvDirection=='b') {
+      newDirection=back;
+    }
+    newData=false;
+    moveCar(newDirection, NORMAL_SPEED);
+    delay(200);
+  }
+}
