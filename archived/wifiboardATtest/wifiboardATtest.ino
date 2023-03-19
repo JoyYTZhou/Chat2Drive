@@ -7,4 +7,4 @@ void setup() {
 void loop() {
   while(Serial2.available()) Serial.write(Serial2.read());
   while(Serial.available()) Serial2.write(Serial.read());
-}s
+}

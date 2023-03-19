@@ -43,9 +43,9 @@ int sonarDistance;
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);     // NewPing setup of pins and maximum distance.
 
 // Object avoidance distances (in inches)
-#define SAFE_DISTANCE 70
-#define TURN_DISTANCE 40
-#define STOP_DISTANCE 12
+#define SAFE_DISTANCE 60
+#define TURN_DISTANCE 30
+#define STOP_DISTANCE 10
 
 // Directions
 enum directions {straight=0, left=1, right=2, back=3};
@@ -100,10 +100,13 @@ void loop()
   
   while (Serial3.available() > 0)
     if (gps.encode(Serial3.read()))
+      Serial.println("GPS available, reading GPS ...");
       processGPS();
 
-  currentLat=32.875204;
-  currentLong=-117.240151;
+  enable();
+  currentLat=32.875129;
+  currentLong=-117.239927;
+  distanceToWaypoint();
   courseToWaypoint();
   currentHeading = readCompass();
   Serial.println("Current heading is ");
@@ -111,16 +114,14 @@ void loop()
   calcDesiredTurn();
   Serial.println("Target heading is ");
   Serial.println(targetHeading);
-  Serial.println("Turn direction should be ");
-  printDirection(turnDirection);
-  
 
   // distance in front of us, move, and avoid obstacles as necessary
   checkSonar();
   Serial.println("Distance to object ahead is ");
   Serial.println(sonarDistance);
-  // moveAndAvoid();
-  
+  // moveCar(speed, turnDirection);
+  // delay(500);
+  moveAndAvoid();
 
 }
 
@@ -133,6 +134,8 @@ void processGPS()
   {
     currentLat = gps.location.lat();
     currentLong = gps.location.lng();
+    Serial.println("Current Longitude is ");
+    Serial.println(currentLong, 6);
 
     // update the course and distance to waypoint based on our new position
     distanceToWaypoint();
@@ -188,6 +191,7 @@ int distanceToWaypoint()
   // check to see if we have reached the current waypoint
   if (distanceToTarget <= WAYPOINT_DIST_TOLERANE-1)
   {
+    Serial.println("We have reached the destination!");
     stop();
     delay(stopwaypoint*1000);
     nextWaypoint();
@@ -218,11 +222,12 @@ int readCompass()
   // Read compass values
   // compass.setCalibration(-1481,1997,-1605,1462,-1568,2831);
   // compass.setCalibration(-833, 1265, -763, 1226, -390, 1578);
-  compass.setCalibration(-1071, 1292, -1057, 1515, -667, 1791);
+  // compass.setCalibration(-1071, 1292, -1057, 1515, -667, 1791);
+  compass.setCalibration(-1218, 1492, -1297, 1567, -800, 1747);
   compass.read();
   // Return Azimuth reading (La Jolla declination added into the method)
   a = compass.getAzimuth();
-  // a = (int) (a-15+7/60.0);
+  a = (int) (a-11+7/60.0);
 
   // Correct for when signs are reversed.
   if(a < 0)
@@ -361,14 +366,19 @@ void moveAndAvoid(void)
 {
     if (sonarDistance >= SAFE_DISTANCE) {       // no close objects in front of car
       {
-          if (turnDirection == straight)
-            speed = FAST_SPEED;
-          else {
-            speed = TURN_SPEED;
-            moveCar(speed, turnDirection);
-          }
-          moveCar(speed, straight);
-          return;
+        Serial.println("No close objects in front!");
+        if (turnDirection == straight) {
+          speed = FAST_SPEED;
+          Serial.println("Going forward!");
+        }
+        else {
+          speed = TURN_SPEED;
+          printDirection(turnDirection);
+          moveCar(speed, turnDirection);
+          Serial.println("Turning!");
+        }
+        moveCar(speed, turnDirection);
+        return;
       }
     }
     if (sonarDistance > TURN_DISTANCE && sonarDistance < SAFE_DISTANCE) // not yet time to turn, but slow down
