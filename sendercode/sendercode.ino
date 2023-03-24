@@ -7,6 +7,7 @@
 #define WIFI_PASSWORD "20140128"
 // Telegram BOT Token (Get from Botfather)
 #define BOT_TOKEN "5798862019:AAHw1L1SIugLDb7JiVgXwlQFkrZX6x_f_5E"
+#define CHAT_ID "6082911904"
 
 const unsigned long BOT_MTBS = 1000; // mean time between scan messages
 
@@ -32,6 +33,21 @@ void handleNewMessages(int numNewMessages)
     else if (bot.messages[i].text=="back" || bot.messages[i].text=="Back") {
       str='b';
     }
+    else if (bot.messages[i].text=="stop" || bot.messages[i].text=="Stop") {
+      str='h';
+    }
+    else if (bot.messages[i].text=="North" || bot.messages[i].text=="north") {
+      str='n';
+    }
+    else if (bot.messages[i].text=="South" || bot.messages[i].text=="south") {
+      str='s';
+    }
+    else if (bot.messages[i].text=="West" || bot.messages[i].text=="west") {
+      str='w';
+    }
+    else if (bot.messages[i].text=="East" || bot.messages[i].text=="east") {
+      str='e';
+    }
     Serial.write(str);
     bot.sendMessage(bot.messages[i].chat_id, bot.messages[i].text, "");
   }
@@ -42,9 +58,6 @@ void setup()
   Serial.begin(115200);
   // Serial.println("Serial communication started.");
 
-  // attempt to connect to Wifi network:
-  // Serial.print("Connecting to Wifi SSID ");
-  Serial.write(WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   secured_client.setTrustAnchors(&cert); // Add root certificate for api.telegram.org
   
