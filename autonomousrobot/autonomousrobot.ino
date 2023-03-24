@@ -11,8 +11,6 @@ int currentHeading;             // current angular direction
 int headingError;               // signed (+/-) difference between targetHeading and currentHeading
 #define HEADING_TOLERANCE 15    // tolerance +/- (in degrees) within which we don't attempt to turn to intercept targetHeading
 
-bool NavigationMode=false;
-
 // Direction received by Serial communication
 char recvDirection;       // User-input direction
 bool newData=false; 
@@ -49,15 +47,14 @@ BTS7960 motorController2(EN2, L_PWM2, R_PWM2);
 #define ECHO_PIN_RIGHT 25       
 #define MAX_DISTANCE_CM 250                        // Maximum distance we want to ping for (in CENTIMETERS). Maximum sensor distance is rated at 400-500cm.  
 #define MAX_DISTANCE_IN (MAX_DISTANCE_CM / 2.5)    // same distance, in inches
-int sonarDistance, sonarDistance_top;
+int sonarDistance, sonarDistance_left;
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE_CM);     // NewPing setup of pins and maximum distance.
-NewPing sonar_top(TRIGGER_PIN_UP, ECHO_PIN_UP, MAX_DISTANCE_CM);
-// NewPing sonar_right(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT, MAX_DISTANCE_CM);
+NewPing sonar_left(TRIGGER_PIN_UP, ECHO_PIN_UP, MAX_DISTANCE_CM);
 
 // Object avoidance distances (in inches)
 #define SAFE_DISTANCE 50
 #define TURN_DISTANCE 40
-#define STOP_DISTANCE 20
+#define STOP_DISTANCE 10
 
 // Directions
 enum directions {straight=0, left=1, right=2, back=3, stop=4};
@@ -104,52 +101,29 @@ void setup()
 void loop()
 {
   enable();
-  if (NavigationMode==true) {
-    while (Serial3.available() > 0)
-      if (gps.encode(Serial3.read()))
-        processGPS();
-    distanceToWaypoint();
-    courseToWaypoint();
-    currentHeading = readCompass();
-    Serial.println("Current Heading: ");
-    Serial.println(currentHeading);
-    calcDesiredTurn();
+  while (Serial3.available() > 0)
+    if (gps.encode(Serial3.read()))
+      processGPS();
+  distanceToWaypoint();
+  courseToWaypoint();
+  currentHeading = readCompass();
+  Serial.println("Current Heading: ");
+  Serial.println(currentHeading);
+  calcDesiredTurn();
 
-    // distance in front of us, move, and avoid obstacles as necessary
-    checkSonar1();
-    checkSonar2();
-    moveAndAvoid();
-  }
-
-  // Read user input if available and make direction turning
-  recvOneChar();
-  newDirection();
-
-  if (NavigationMode==false) {
-     control();
-  }
-}
-
-void control() {
+  // distance in front of us, move, and avoid obstacles as necessary
   checkSonar1();
   checkSonar2();
-  Serial.println(turnDirection);
-  if (turnDirection==stop) {moveCar(speed, turnDirection);}
-  if (sonarDistance_top <= STOP_DISTANCE) {moveCar(speed, right);}
-  if (sonarDistance <= STOP_DISTANCE) {moveCar(speed,stop);}
-  if (sonarDistance >= SAFE_DISTANCE) {
-    if (turnDirection!=straight && turnDirection!=back) {
-      moveCar(speed, straight);
-    }
-  }
+  moveAndAvoid();
+
 }
+
 
 // Functions for reading GPS module and navigate to the next waypoint
 /* ================================================================================================================================================
 ================================================================================================================================================ */
 void processGPS()
 {
-  Serial.println("searching for GPS!");
   if (gps.location.isValid())
   {
     currentLat = gps.location.lat();
@@ -371,38 +345,20 @@ void checkSonar2(void)
   // sonar.ping_median(iterations [, max_cm_distance]) 
   // Do multiple pings (default=5), discard out of range pings and return median in microseconds. 
   // [max_cm_distance] allows you to optionally set a new max distance.
-  time = sonar_top.ping_median(5, MAX_DISTANCE_CM);
+  time = sonar_left.ping_median(5, MAX_DISTANCE_CM);
   dist = NewPing::convert_in(time);             // get distance in inches from the sensor
   if (dist == 0)                                // if too far to measure, return max distance;
     dist = MAX_DISTANCE_IN;  
-  sonarDistance_top = dist;      // add the new value into moving average, use resulting average
+  sonarDistance_left = dist;      // add the new value into moving average, use resulting average
 }
 
-// Temporary debug functions
-void printDirection(int turnDirection) {
-  switch(turnDirection) {
-    case straight:
-      Serial.println("Go forward");
-      break;
-    case left:
-      Serial.println("Go to your left");
-      break;
-    case right:
-      Serial.println("Go to your right");
-      break;
-    case back:
-      Serial.println("Turn around");
-      break;
-  }
-}
 
 void moveAndAvoid(void)
 {
-    if (sonarDistance >= SAFE_DISTANCE && sonarDistance_top >= TURN_DISTANCE) {       // no close objects in front of car
+    if (sonarDistance >= SAFE_DISTANCE) {       // no close objects in front of car
       {
         if (turnDirection == straight) {
           speed = FAST_SPEED;
-          Serial.println("Going forward!");
         }
         else {
           speed = TURN_SPEED;
@@ -411,8 +367,8 @@ void moveAndAvoid(void)
         return;
       }
     }
-    if (sonarDistance > TURN_DISTANCE && sonarDistance < SAFE_DISTANCE && sonarDistance_top > TURN_DISTANCE) // not yet time to turn, but slow down
-    {   
+    if (sonarDistance > TURN_DISTANCE && sonarDistance < SAFE_DISTANCE) // not yet time to turn, but slow down
+    {
       {
         if (turnDirection == straight)
           speed = NORMAL_SPEED;
@@ -420,14 +376,12 @@ void moveAndAvoid(void)
         {
           speed = TURN_SPEED;
           moveCar(speed, turnDirection);      // alraedy turning to navigate
-          printDirection(turnDirection);
         }
-        moveCar(speed, straight);       
+        moveCar(speed, turnDirection);
         return;
       }
     }
-     
-    if (sonarDistance <  TURN_DISTANCE && sonarDistance > STOP_DISTANCE && sonarDistance_top > STOP_DISTANCE)  // getting close, time to turn to avoid object        
+    if (sonarDistance <  TURN_DISTANCE && sonarDistance > STOP_DISTANCE)  // getting close, time to turn to avoid object        
     {
       speed = SLOW_SPEED;
       moveCar(speed, straight);      // slow down
@@ -440,30 +394,53 @@ void moveAndAvoid(void)
           else
             turnDirection = right;
           moveCar(TURN_SPEED, turnDirection);  // turn in the new direction
+          delay(50);
           break;
         }
         case left:                         // if already turning left, try right
         {
-          moveCar(TURN_SPEED, turnDirection);    
+          moveCar(TURN_SPEED, right);    
+          delay(50);
           break;  
         }
         case right:                       // if already turning right, try left
         {
-          moveCar(TURN_SPEED, turnDirection);
+          moveCar(TURN_SPEED, left);
+          delay(50);
           break;
         }
       }
       return;
     }  
-
-    if (sonarDistance <  STOP_DISTANCE && sonarDistance_top < STOP_DISTANCE)          // too close, stop and back up
+    if (sonarDistance_left < STOP_DISTANCE) { // detecting really close object on the left, time to turn to avoid object 
+      speed = SLOW_SPEED;
+      moveCar(speed, straight);      // slow down
+      switch (turnDirection)
+      {
+        case straight:                  // going straight currently, so turn right
+        {
+          turnDirection = right;
+          moveCar(speed, turnDirection);
+          delay(50);
+          break;
+        }
+        case left:                         // if already turning left, try right
+        {
+          moveCar(TURN_SPEED, right);
+          delay(50);    
+          break;  
+        }
+      }
+      return;
+    }
+    if (sonarDistance <  STOP_DISTANCE && sonarDistance_left < STOP_DISTANCE)          // too close, stop and back up
     {
       stopCar();            // stop 
-      turnDirection=back;
-      moveCar(SLOW_SPEED, turnDirection); // straighten up
+      moveCar(SLOW_SPEED, back); // back up
       delay(200);
-      Serial.println("delayed");
-      moveCar(NORMAL_SPEED, turnDirection); // go back at higher speed
+      moveCar(NORMAL_SPEED, turnDirection); // straighten up
+      delay(50);
+      moveCar(NORMAL_SPEED, back); // go back at higher speed
       while (sonarDistance < TURN_DISTANCE)       // backup until we get safe clearance
       {
         if(GPS.parse(GPS.lastNMEA()) )
@@ -473,71 +450,8 @@ void moveAndAvoid(void)
         checkSonar1();
         checkSonar2();
         delay(100);
-        Serial.println("delayed");
       }
       stopCar(); // stop backing up
       return;
     } // end of IF TOO CLOSE
 } 
-
-// Functions for reading user input data from telegram
-// ================================================================================================================================================
-void recvOneChar() {
-  if (Serial2.available()>0) {
-    recvDirection=Serial2.read();
-    newData=true;
-    Serial.println(recvDirection);
-  }
-}
-
-void newDirection() {
-  int newDir=10;
-  bool newHeading=false;
-  if (newData==true) {
-    if (recvDirection=='r') {
-      newDir=right;
-    }
-    else if (recvDirection=='l') {
-      newDir=left;
-    }
-    else if (recvDirection=='f') {
-      newDir=straight;
-    }
-    else if (recvDirection=='b') {
-      newDir=back;
-    }
-    else if (recvDirection=='h') {
-      newDir=stop;
-    }
-    else if (recvDirection=='n') {
-      targetHeading=10;
-      newHeading=true;
-    }
-    else if (recvDirection=='e') {
-      targetHeading=90;
-      newHeading=true;
-    }
-    else if (recvDirection=='s') {
-      targetHeading=180;
-      newHeading=true;
-    }
-    else if (recvDirection=='w') {
-      targetHeading=340;
-      newHeading=true;
-    }
-    newData=false;
-    currentHeading = readCompass();
-  }
-  if (newDir!=10) {
-    turnDirection=newDir;
-    moveCar(speed, turnDirection);
-    delay(200);
-    Serial.println("delayed");
-  }
-  if (newHeading) {
-    calcDesiredTurn();
-    moveCar(speed, turnDirection);
-    delay(200);
-    Serial.println("delayed");
-  }
-}
